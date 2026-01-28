@@ -1,0 +1,78 @@
+/* Estilos personalizados adicionales */
+
+.modal-hidden {
+    display: none;
+}
+
+.modal-visible {
+    display: flex;
+}
+
+/* Animaciones suaves */
+.transition-all {
+    transition: all 0.3s ease;
+}
+
+/* Scrollbar personalizado */
+#transactionsList::-webkit-scrollbar {
+    width: 8px;
+}
+
+#transactionsList::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#transactionsList::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+#transactionsList::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Estilos para botones de tipo activos */
+.btn-type-active-ingreso {
+    background-color: #059669 !important;
+    color: white !important;
+}
+
+.btn-type-active-gasto {
+    background-color: #dc2626 !important;
+    color: white !important;
+}
+
+/* Animación de entrada para transacciones */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.transaction-item {
+    animation: slideIn 0.3s ease;
+}
+
+/* Hover effects mejorados */
+.transaction-item:hover {
+    transform: translateX(4px);
+    transition: transform 0.2s ease;
+}
+
+/* Estilos para el modal */
+#modal {
+    backdrop-filter: blur(4px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .text-3xl {
+        font-size: 1.5rem;
+    }
+}
