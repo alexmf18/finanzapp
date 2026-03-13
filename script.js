@@ -6,6 +6,8 @@ let transactions = [
     { id: 4, type: 'ingreso', category: 'Freelance', amount: 500, date: '2026-01-10', description: 'Proyecto web' },
 ];
 
+const STORAGE_KEY = 'finanzas.transactions.v1';
+
 // Categorías
 const categories = {
     ingreso: ['Salario', 'Freelance', 'Inversiones', 'Otros ingresos'],
@@ -14,6 +16,7 @@ const categories = {
 
 // Estado del formulario
 let currentType = 'gasto';
+let editingTransactionId = null;
 
 // Elementos del DOM
 const modal = document.getElementById('modal');
@@ -28,13 +31,23 @@ const inputAmount = document.getElementById('inputAmount');
 const inputDate = document.getElementById('inputDate');
 const inputDescription = document.getElementById('inputDescription');
 const filterType = document.getElementById('filterType');
+const filterSearch = document.getElementById('filterSearch');
+const sortBy = document.getElementById('sortBy');
 const filterCategory = document.getElementById('filterCategory');
+const filterDateRange = document.getElementById('filterDateRange');
+const customDateRange = document.getElementById('customDateRange');
+const filterDateFrom = document.getElementById('filterDateFrom');
+const filterDateTo = document.getElementById('filterDateTo');
 const transactionsList = document.getElementById('transactionsList');
 const categoriesSummary = document.getElementById('categoriesSummary');
+const categoriesTotal = document.getElementById('categoriesTotal');
 const totalIngresos = document.getElementById('totalIngresos');
 const totalGastos = document.getElementById('totalGastos');
 const balanceTotal = document.getElementById('balanceTotal');
 const balanceCard = document.getElementById('balanceCard');
+const btnExportCsv = document.getElementById('btnExportCsv');
+const modalTitle = document.getElementById('modalTitle');
+const btnSubmitForm = document.getElementById('btnSubmitForm');
 
 // Event Listeners
 btnNewTransaction.addEventListener('click', openModal);
@@ -44,12 +57,26 @@ btnIngreso.addEventListener('click', () => setTransactionType('ingreso'));
 btnGasto.addEventListener('click', () => setTransactionType('gasto'));
 transactionForm.addEventListener('submit', handleSubmit);
 filterType.addEventListener('change', renderTransactions);
+filterSearch.addEventListener('input', renderTransactions);
+sortBy.addEventListener('change', renderTransactions);
 filterCategory.addEventListener('change', renderTransactions);
+filterDateRange.addEventListener('change', handleDateRangeChange);
+filterDateFrom.addEventListener('change', renderTransactions);
+filterDateTo.addEventListener('change', renderTransactions);
+btnExportCsv.addEventListener('click', exportToCsv);
+modal.addEventListener('click', handleOutsideModalClick);
+document.addEventListener('keydown', handleEscapeKey);
 
 // Funciones
 function openModal() {
+    editingTransactionId = null;
+    modalTitle.textContent = 'Nueva Transacción';
+    btnSubmitForm.textContent = 'Guardar';
+    setTransactionType('gasto');
+    inputDate.value = new Date().toISOString().split('T')[0];
     modal.classList.remove('modal-hidden');
     modal.classList.add('modal-visible');
+    inputAmount.focus();
 }
 
 function closeModal() {
@@ -61,6 +88,9 @@ function closeModal() {
 function resetForm() {
     transactionForm.reset();
     setTransactionType('gasto');
+    editingTransactionId = null;
+    modalTitle.textContent = 'Nueva Transacción';
+    btnSubmitForm.textContent = 'Guardar';
 }
 
 function setTransactionType(type) {
@@ -101,19 +131,48 @@ function handleSubmit(e) {
         alert('Por favor completa todos los campos obligatorios');
         return;
     }
+
+    if (amount <= 0) {
+        alert('El monto debe ser mayor que cero');
+        return;
+    }
     
-    const newTransaction = {
-        id: Date.now(),
+    const payload = {
         type: currentType,
         category,
         amount,
         date,
-        description
+        description: description.trim()
     };
-    
-    transactions.unshift(newTransaction);
+
+    if (editingTransactionId) {
+        transactions = transactions.map(t => (t.id === editingTransactionId ? { ...t, ...payload } : t));
+    } else {
+        transactions.unshift({ id: Date.now(), ...payload });
+    }
+
     closeModal();
     updateDashboard();
+}
+
+function editTransaction(id) {
+    const transaction = transactions.find(t => t.id === id);
+    if (!transaction) {
+        return;
+    }
+
+    editingTransactionId = id;
+    modalTitle.textContent = 'Editar Transacción';
+    btnSubmitForm.textContent = 'Actualizar';
+    setTransactionType(transaction.type);
+    inputCategory.value = transaction.category;
+    inputAmount.value = transaction.amount;
+    inputDate.value = transaction.date;
+    inputDescription.value = transaction.description || '';
+
+    modal.classList.remove('modal-hidden');
+    modal.classList.add('modal-visible');
+    inputAmount.focus();
 }
 
 function deleteTransaction(id) {
@@ -123,15 +182,112 @@ function deleteTransaction(id) {
     }
 }
 
+function handleOutsideModalClick(e) {
+    if (e.target === modal) {
+        closeModal();
+    }
+}
+
+function handleEscapeKey(e) {
+    if (e.key === 'Escape' && modal.classList.contains('modal-visible')) {
+        closeModal();
+    }
+}
+
+function formatCurrency(amount) {
+    return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(amount);
+}
+
+function formatDate(date) {
+    return new Intl.DateTimeFormat('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+    }).format(new Date(`${date}T00:00:00`));
+}
+
+function saveTransactions() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+}
+
+function loadTransactions() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+        return;
+    }
+
+    try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+            transactions = parsed;
+        }
+    } catch {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+}
+
+function handleDateRangeChange() {
+    const range = filterDateRange.value;
+    customDateRange.classList.toggle('hidden', range !== 'personalizado');
+
+    const today = new Date();
+    const toISO = (date) => date.toISOString().split('T')[0];
+
+    if (range === 'hoy') {
+        const iso = toISO(today);
+        filterDateFrom.value = iso;
+        filterDateTo.value = iso;
+    } else if (range === 'ultimos7') {
+        const start = new Date(today);
+        start.setDate(today.getDate() - 6);
+        filterDateFrom.value = toISO(start);
+        filterDateTo.value = toISO(today);
+    } else if (range === 'mesActual') {
+        const start = new Date(today.getFullYear(), today.getMonth(), 1);
+        const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        filterDateFrom.value = toISO(start);
+        filterDateTo.value = toISO(end);
+    } else if (range === 'todos') {
+        filterDateFrom.value = '';
+        filterDateTo.value = '';
+    }
+
+    renderTransactions();
+}
+
 function getFilteredTransactions() {
     const typeFilter = filterType.value;
     const categoryFilter = filterCategory.value;
-    
-    return transactions.filter(t => {
+    const searchFilter = filterSearch.value.trim().toLowerCase();
+    const dateFrom = filterDateFrom.value;
+    const dateTo = filterDateTo.value;
+
+    const filtered = transactions.filter(t => {
         const typeMatch = typeFilter === 'todos' || t.type === typeFilter;
         const categoryMatch = categoryFilter === 'todas' || t.category === categoryFilter;
-        return typeMatch && categoryMatch;
+        const textMatch = !searchFilter
+            || t.category.toLowerCase().includes(searchFilter)
+            || (t.description || '').toLowerCase().includes(searchFilter);
+        const dateMatch = (!dateFrom || t.date >= dateFrom) && (!dateTo || t.date <= dateTo);
+        return typeMatch && categoryMatch && textMatch && dateMatch;
     });
+
+    const sorted = [...filtered];
+    const sortValue = sortBy.value;
+    if (sortValue === 'antiguas') {
+        sorted.sort((a, b) => new Date(a.date) - new Date(b.date));
+    } else if (sortValue === 'mayor') {
+        sorted.sort((a, b) => b.amount - a.amount);
+    } else if (sortValue === 'menor') {
+        sorted.sort((a, b) => a.amount - b.amount);
+    } else {
+        sorted.sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
+
+    return sorted;
 }
 
 function renderTransactions() {
@@ -161,16 +317,24 @@ function renderTransactions() {
                         </span>
                     </div>
                     <p class="text-sm text-gray-600">${t.description || 'Sin descripción'}</p>
-                    <p class="text-xs text-gray-500 mt-1">${t.date}</p>
+                    <p class="text-xs text-gray-500 mt-1">${formatDate(t.date)}</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
                 <p class="text-xl font-bold ${t.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}">
-                    ${t.type === 'ingreso' ? '+' : '-'}€${t.amount.toFixed(2)}
+                    ${t.type === 'ingreso' ? '+' : '-'}${formatCurrency(t.amount)}
                 </p>
+                <button
+                    onclick="editTransaction(${t.id})"
+                    class="text-indigo-500 hover:text-indigo-700 p-2 hover:bg-indigo-50 rounded transition-colors"
+                    title="Editar"
+                >
+                    <i class="fas fa-pen"></i>
+                </button>
                 <button
                     onclick="deleteTransaction(${t.id})"
                     class="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition-colors"
+                    title="Eliminar"
                 >
                     <i class="fas fa-trash"></i>
                 </button>
@@ -190,9 +354,9 @@ function updateBalanceCards() {
     
     const balance = ingresos - gastos;
     
-    totalIngresos.textContent = `€${ingresos.toFixed(2)}`;
-    totalGastos.textContent = `€${gastos.toFixed(2)}`;
-    balanceTotal.textContent = `€${balance.toFixed(2)}`;
+    totalIngresos.textContent = formatCurrency(ingresos);
+    totalGastos.textContent = formatCurrency(gastos);
+    balanceTotal.textContent = formatCurrency(balance);
     
     // Cambiar color del balance según sea positivo o negativo
     if (balance >= 0) {
@@ -211,6 +375,7 @@ function renderCategoriesSummary() {
         }, {});
     
     const totalGastosAmount = Object.values(gastosPorCategoria).reduce((sum, amount) => sum + amount, 0);
+    categoriesTotal.textContent = `Total: ${formatCurrency(totalGastosAmount)}`;
     
     if (Object.keys(gastosPorCategoria).length === 0) {
         categoriesSummary.innerHTML = '<p class="text-gray-500 text-center py-8">No hay gastos registrados</p>';
@@ -225,7 +390,7 @@ function renderCategoriesSummary() {
             <div>
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-sm font-medium text-gray-700">${category}</span>
-                    <span class="text-sm font-bold text-gray-900">€${amount.toFixed(2)}</span>
+                    <span class="text-sm font-bold text-gray-900">${formatCurrency(amount)}</span>
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2">
                     <div
@@ -240,7 +405,7 @@ function renderCategoriesSummary() {
 }
 
 function updateFilterCategories() {
-    const allCategories = [...categories.ingreso, ...categories.gasto];
+    const allCategories = [...new Set([...categories.ingreso, ...categories.gasto])];
     filterCategory.innerHTML = '<option value="todas">Todas las categorías</option>';
     allCategories.forEach(cat => {
         const option = document.createElement('option');
@@ -250,7 +415,36 @@ function updateFilterCategories() {
     });
 }
 
+function exportToCsv() {
+    if (transactions.length === 0) {
+        alert('No hay transacciones para exportar');
+        return;
+    }
+
+    const header = ['id', 'tipo', 'categoria', 'monto', 'fecha', 'descripcion'];
+    const rows = transactions.map(t => [
+        t.id,
+        t.type,
+        `"${t.category.replace(/"/g, '""')}"`,
+        t.amount,
+        t.date,
+        `"${(t.description || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transacciones-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
 function updateDashboard() {
+    saveTransactions();
     updateBalanceCards();
     renderTransactions();
     renderCategoriesSummary();
@@ -258,8 +452,10 @@ function updateDashboard() {
 
 // Inicialización
 function init() {
+    loadTransactions();
     updateCategoryOptions();
     updateFilterCategories();
+    handleDateRangeChange();
     updateDashboard();
 }
 
